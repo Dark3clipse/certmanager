@@ -1,0 +1,154 @@
+#!/bin/bash
+SCRIPT=$( basename "$0" )
+VERSION="1.0.0"
+
+
+# configure application prior to build
+if test -f ".env"; then
+  export $(cat .env | xargs)
+fi
+
+# test availability of environment variables
+if [ -z "$DOMAINS" ]; then echo "Environment variable DOMAINS is unset or empty." && exit 1; fi
+if [ -z "$CERT_EMAIL" ]; then echo "Environment variable CERT_EMAIL is unset or empty." && exit 1; fi
+
+
+function usage
+{
+    local txt=(
+"Utility $SCRIPT for managing certificates."
+"Usage: $SCRIPT [options] <command> [arguments]"
+""
+"Command:"
+"  issue          		Issue certificates."
+"  renew			    Renew certificates."
+""
+"Options:"
+"  --help, -h             Print help."
+"  --version, -h          Print version."
+"  --all-domains          Issue all domains."
+"  --domains [anything]   Issue specific domains."
+"  --dh				      Generate dh params."
+"  --webserver			  Launch webserver for validating certificates."
+    )
+
+    printf "%s\n" "${txt[@]}"
+}
+
+function badUsage
+{
+    local message="$1"
+    local txt=(
+"For an overview of the command, execute:"
+"$SCRIPT --help"
+    )
+
+    [[ $message ]] && printf "$message\n"
+
+    printf "%s\n" "${txt[@]}"
+}
+
+#
+# Message to display for version.
+#
+function version
+{
+    local txt=(
+"$SCRIPT version $VERSION"
+    )
+
+    printf "%s\n" "${txt[@]}"
+}
+
+
+function app-issue
+{
+	ALL_DOMAINS=false
+	DH=false
+	WEBSERVER=false
+
+	T="--all-domains"
+	if [ "$2" = "$T" ] || [ "$3" = "$T" ] || [ "$4" = "$T" ]; then
+		ALL_DOMAINS=true
+	fi
+
+	T="--dh"
+	if [ "$2" = "$T" ] || [ "$3" = "$T" ] || [ "$4" = "$T" ]; then
+		DH=true
+	fi
+
+	T="--webserver"
+	if [ "$2" = "$T" ] || [ "$3" = "$T" ] || [ "$4" = "$T" ]; then
+		WEBSERVER=true
+	fi
+
+	if [ "$ALL_DOMAINS" = "false" ]; then
+		T="--domains"
+		if [ "$1" = "$T" ] && [ $# -gt 1 ]; then
+			DOMAINS=$2
+		elif [ "$2" = "$T" ] && [ $# -gt 2 ]; then
+			DOMAINS=$3
+		elif [ "$3" = "$T" ] && [ $# -gt 3 ]; then
+			DOMAINS=$4
+		elif [ "$4" = "$T" ] && [ $# -gt 4 ]; then
+			DOMAINS=$5
+		else
+			echo "no domains specified"
+			exit 1
+		fi
+	fi
+
+	if $DH && $WEBSERVER; then
+		docker-compose -f letsencrypt/issue.yml -p letsencrypt up
+	elif $DH; then
+		docker-compose -f letsencrypt/issue.yml -p letsencrypt up letsencrypt-issue dhparam
+	elif $WEBSERVER; then
+		docker-compose -f letsencrypt/issue.yml -p letsencrypt up letsencrypt-nginx letsencrypt-issue
+	else
+		docker-compose -f letsencrypt/issue.yml -p letsencrypt up letsencrypt-issue
+	fi
+}
+
+function app-renew
+{
+    docker-compose -f letsencrypt/renew.yml -p letsencrypt up
+}
+
+# ensure directory exists
+mkdir -p /etc/letsencrypt
+
+#
+# Process options
+#
+while (( $# ))
+do
+    case "$1" in
+
+        --help | -h)
+            usage
+            exit 0
+        ;;
+
+        --version | -v)
+            version
+            exit 0
+        ;;
+
+        issue         \
+        | renew)
+            command=$1
+            shift
+            app-$command $*
+            exit 0
+        ;;
+
+        *)
+            badUsage "Option/command not recognized."
+            exit 1
+        ;;
+
+    esac
+done
+
+badUsage
+exit 1
