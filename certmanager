@@ -25,7 +25,7 @@ function usage
 ""
 "Options:"
 "  --help, -h             Print help."
-"  --version, -h          Print version."
+"  --version, -v          Print version."
 "  --all-domains          Issue all domains."
 "  --domains [anything]   Issue specific domains."
 "  --dh				      Generate dh params."
